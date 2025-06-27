@@ -1,0 +1,114 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Basic Configuration
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=changeme123!
+      
+      # Database Configuration (PostgreSQL)
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=n8n_password
+      
+      # Security
+      - N8N_ENCRYPTION_KEY=your-32-character-encryption-key-here
+      - WEBHOOK_URL=http://localhost:5678/
+      
+      # Performance
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=168
+      - N8N_METRICS=true
+      
+      # Timezone
+      - GENERIC_TIMEZONE=Asia/Bangkok
+      - TZ=Asia/Bangkok
+      
+      # Logging
+      - N8N_LOG_LEVEL=info
+      - N8N_LOG_OUTPUT=console,file
+      
+      # Security Headers
+      - N8N_SECURE_COOKIE=false
+      - N8N_PROTOCOL=http
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n/backup:/backup
+      - ./n8n/custom-nodes:/home/node/.n8n/custom
+    depends_on:
+      - postgres
+    networks:
+      - n8n-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: n8n-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=n8n
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=n8n_password
+      - POSTGRES_NON_ROOT_USER=n8n
+      - POSTGRES_NON_ROOT_PASSWORD=n8n_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/backup:/backup
+    networks:
+      - n8n-network
+    ports:
+      - "5432:5432"  # เอาออกถ้าไม่ต้องการเข้าถึงจากภายนอก
+
+  # Redis for caching and queue (optional แต่แนะนำสำหรับ production)
+  redis:
+    image: redis:7-alpine
+    container_name: n8n-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass redis_password
+    volumes:
+      - redis_data:/data
+    networks:
+      - n8n-network
+    ports:
+      - "6379:6379"  # เอาออกถ้าไม่ต้องการเข้าถึงจากภายนอก
+
+  # Nginx Reverse Proxy (optional - สำหรับ SSL/TLS)
+  nginx:
+    image: nginx:alpine
+    container_name: n8n-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - n8n
+    networks:
+      - n8n-network
+
+volumes:
+  n8n_data:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  n8n-network:
+    driver: bridge
